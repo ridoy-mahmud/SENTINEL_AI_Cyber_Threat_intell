@@ -78,4 +78,27 @@ export interface QuickStats {
   avgResponseTime: number;
 }
 
+export interface DetectionRuleSetting {
+  name: string;
+  enabled: boolean;
+  severity: string;
+}
+
+export interface NotificationChannelSetting {
+  name: string;
+  enabled: boolean;
+  threshold: string;
+}
+
+export interface IntegrationSetting {
+  name: string;
+  status: 'connected' | 'disconnected' | 'configured';
+}
+
+export interface SettingsState {
+  rules: DetectionRuleSetting[];
+  notifications: NotificationChannelSetting[];
+  integrations: IntegrationSetting[];
+}
+
 export type SeverityColor = 'critical' | 'high' | 'medium' | 'low' | 'info';

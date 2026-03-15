@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { GlowCard } from '@/components/shared/GlowCard';
-import { PulsingDot } from '@/components/shared/PulsingDot';
-import { Send } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { GlowCard } from "@/components/shared/GlowCard";
+import { PulsingDot } from "@/components/shared/PulsingDot";
+import { Send, Download, FileText } from "lucide-react";
+import { toast } from "sonner";
+import {
+  generateQuickStats,
+  generateInitialThreats,
+  generateSystemHealth,
+} from "@/lib/mock-data";
+import { requestAiAnalysis } from "@/lib/api";
 
 interface Message {
   id: string;
-  role: 'user' | 'ai';
+  role: "user" | "ai";
   content: string;
   timestamp: Date;
 }
@@ -16,91 +23,419 @@ const SAMPLE_PROMPTS = [
   "Generate weekly security report",
   "Explain the latest anomaly",
   "Show top threat actors targeting our sector",
+  "Summarize network health",
+  "What are the most common attack vectors?",
 ];
 
-const AI_RESPONSES: Record<string, string> = {
-  default: `## Threat Analysis Summary
+function generateContextAwareResponse(input: string): string {
+  const lower = input.toLowerCase();
+  const stats = generateQuickStats();
+  const threats = generateInitialThreats(5);
+  const health = generateSystemHealth();
 
-Based on current telemetry data, I've identified **14 anomalous events** in the last 24 hours.
+  if (lower.includes("analyze") && lower.includes("threat")) {
+    return `## Today's Threat Landscape
 
-### Key Findings:
-- **3 Critical** alerts related to APT29 C2 communication patterns
-- **Lateral movement** detected on subnet \`10.0.4.0/24\`
-- Anomaly score peaked at **94.2** at 14:32 UTC
-
-### Recommended Actions:
-1. Isolate \`10.0.4.122\` — confirmed C2 beacon activity
-2. Block egress traffic to \`185.234.xx.xx\` range
-3. Rotate credentials for service accounts on SRV-12, SRV-15
-4. Initiate full forensic capture on affected endpoints
-
-*Confidence: 94.2% — Model: Isolation Forest v3.2*`,
-
-  "analyze today's threats": `## Today's Threat Landscape
-
-**Total Events Processed:** 1,247,832
-**Anomalies Detected:** 23
-**Critical Alerts:** 3
+**Total Events Processed:** ${stats.totalEvents.toLocaleString()}
+**Anomalies Detected:** ${stats.threatsDetected}
+**Critical Alerts:** ${threats.filter((t) => t.severity === "critical").length}
 
 ### Active Threats:
 | Threat | Severity | Status |
 |--------|----------|--------|
-| APT29-CozyBear Intrusion | 🔴 Critical | Active |
-| Emotet Variant C2 | 🟡 High | Investigating |
-| Log4Shell Exploit Chain | 🔴 Critical | Active |
+${threats
+  .slice(0, 5)
+  .map(
+    (t) =>
+      `| ${t.name} | ${t.severity === "critical" ? "🔴" : t.severity === "high" ? "🟡" : "🟢"} ${t.severity} | ${t.status} |`,
+  )
+  .join("\n")}
 
-The primary concern is the APT29 campaign targeting our DMZ servers. The attack pattern matches known TTPs with lateral movement via compromised service accounts.`,
+### Key Observations:
+- **${threats.filter((t) => t.status === "active").length} active** threats require immediate attention
+- Primary concern: ${threats[0]?.name ?? "None"} (${threats[0]?.type})
+- Average confidence score: ${((threats.reduce((s, t) => s + t.confidence, 0) / threats.length) * 100).toFixed(1)}%
 
-  "what's the risk level of 10.0.4.122?": `## Node Risk Assessment: \`10.0.4.122\`
+*Analysis generated at ${new Date().toLocaleTimeString()} UTC*`;
+  }
 
-**Risk Level: 🔴 CRITICAL (Score: 92/100)**
+  if (lower.includes("risk") && lower.match(/\d+\.\d+\.\d+\.\d+/)) {
+    const ip = lower.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || "10.0.4.122";
+    const score = Math.floor(Math.random() * 40) + 60;
+    return `## Node Risk Assessment: \`${ip}\`
+
+**Risk Level: ${score > 80 ? "🔴 CRITICAL" : score > 60 ? "🟡 HIGH" : "🟢 MODERATE"} (Score: ${score}/100)**
 
 ### Analysis:
-- **C2 Beacon Activity** detected — communicating with known APT29 infrastructure
-- **Anomalous DNS queries** — 847 unique domains in 24h (baseline: 12)
-- **Data staging** detected — 2.3GB compressed archive created at 03:14 UTC
-- **Credential harvesting** — Mimikatz signatures in memory
+- **${score > 80 ? "C2 Beacon Activity detected" : "Suspicious outbound connections"}** — ${Math.floor(Math.random() * 500 + 100)} anomalous connections in 24h
+- **DNS queries:** ${Math.floor(Math.random() * 800 + 50)} unique domains (baseline: ${Math.floor(Math.random() * 20 + 5)})
+- **Data volume:** ${(Math.random() * 5).toFixed(1)}GB transferred in last 12h
+- **Open ports:** ${[22, 80, 443, 3389, 8080].slice(0, Math.floor(Math.random() * 3) + 2).join(", ")}
 
-### Network Position:
-- Subnet: \`10.0.4.0/24\` (Finance VLAN)
-- Connected to 7 other hosts
-- Access to DB-FINANCE-01 (contains PII)
-
-### Immediate Action Required:
-1. **ISOLATE** this endpoint immediately
+### Recommended Actions:
+1. ${score > 80 ? "**ISOLATE** this endpoint immediately" : "Monitor traffic patterns for 24h"}
 2. Preserve volatile memory for forensics
-3. Check lateral movement to connected hosts`,
-};
+3. Check lateral movement to connected hosts
+4. Review associated user credentials
+
+*Confidence: ${(Math.random() * 10 + 88).toFixed(1)}% — Model: Isolation Forest v3.2*`;
+  }
+
+  if (
+    lower.includes("report") ||
+    lower.includes("weekly") ||
+    lower.includes("summary")
+  ) {
+    return `## Weekly Security Report — ${new Date().toLocaleDateString()}
+
+### Executive Summary
+This week's threat landscape shows a **${Math.random() > 0.5 ? "moderate increase" : "slight decrease"}** in overall attack surface activity.
+
+### Key Metrics:
+| Metric | This Week | Last Week | Change |
+|--------|-----------|-----------|--------|
+| Total Events | ${stats.totalEvents.toLocaleString()} | ${(stats.totalEvents - Math.floor(Math.random() * 10000)).toLocaleString()} | ${Math.random() > 0.5 ? "↑" : "↓"} |
+| Threats Detected | ${stats.threatsDetected} | ${stats.threatsDetected + Math.floor(Math.random() * 10 - 5)} | ${Math.random() > 0.5 ? "↑" : "↓"} |
+| MTTD | ${stats.avgResponseTime}s | ${(stats.avgResponseTime + Math.random()).toFixed(1)}s | ↓ |
+| False Positive Rate | ${stats.falsePositiveRate}% | ${(stats.falsePositiveRate + Math.random()).toFixed(1)}% | ↓ |
+
+### Top Threats:
+${threats
+  .slice(0, 3)
+  .map((t, i) => `${i + 1}. **${t.name}** — ${t.type} (${t.severity})`)
+  .join("\n")}
+
+### Recommendations:
+1. Review and update firewall rules for recently detected IOCs
+2. Schedule credential rotation for high-risk service accounts
+3. Update ML model training data with latest threat patterns
+
+*Report auto-generated by SENTINEL AI — ${new Date().toISOString()}*`;
+  }
+
+  if (lower.includes("anomaly") || lower.includes("explain")) {
+    return `## Latest Anomaly Analysis
+
+**Anomaly Score: ${Math.floor(Math.random() * 30 + 70)}/100**
+**Detected:** ${new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString()} UTC
+**Model:** Isolation Forest v3.2
+
+### What Happened:
+A **behavioral anomaly** was detected in network segment \`10.0.4.0/24\`. The anomaly shows:
+
+- **Unusual DNS query volume** — ${Math.floor(Math.random() * 500 + 200)}% above baseline
+- **Non-standard port usage** — Traffic on port ${Math.floor(Math.random() * 10000 + 10000)} (uncommon for this segment)
+- **Timing pattern** — Activity concentrated outside business hours
+
+### Feature Contributions:
+- Packet Size Variance: **${(Math.random() * 0.3 + 0.7).toFixed(2)}** (high importance)
+- Flow Duration: **${(Math.random() * 0.2 + 0.6).toFixed(2)}**
+- Connection Count: **${(Math.random() * 0.2 + 0.5).toFixed(2)}**
+
+### Assessment:
+This pattern is consistent with **${["C2 beaconing", "data staging", "reconnaissance activity", "credential harvesting"][Math.floor(Math.random() * 4)]}**. Recommend immediate investigation.
+
+*Confidence: ${(Math.random() * 5 + 93).toFixed(1)}%*`;
+  }
+
+  if (lower.includes("network") || lower.includes("health")) {
+    return `## Network Health Summary
+
+### System Status:
+| Component | Usage | Status |
+|-----------|-------|--------|
+| CPU | ${health.cpu}% | ${health.cpu > 70 ? "🟡 High" : "🟢 Normal"} |
+| Memory | ${health.memory}% | ${health.memory > 80 ? "🔴 Critical" : "🟢 Normal"} |
+| Bandwidth | ${health.bandwidth}% | ${health.bandwidth > 85 ? "🟡 High" : "🟢 Normal"} |
+| ML Accuracy | ${health.modelAccuracy}% | 🟢 Optimal |
+
+### Network Segments:
+- **DMZ:** ${Math.floor(Math.random() * 5 + 10)} active nodes, ${Math.floor(Math.random() * 3)} alerts
+- **Internal:** ${Math.floor(Math.random() * 20 + 50)} active nodes, ${Math.floor(Math.random() * 5)} alerts
+- **IoT:** ${Math.floor(Math.random() * 15 + 20)} devices, ${Math.floor(Math.random() * 8)} anomalies
+
+All systems operational. Next scheduled maintenance: ${new Date(Date.now() + 86400000 * 3).toLocaleDateString()}.`;
+  }
+
+  if (lower.includes("attack vector") || lower.includes("common")) {
+    return `## Common Attack Vectors — Last 30 Days
+
+### By Frequency:
+1. **Phishing** — ${Math.floor(Math.random() * 200 + 300)} attempts (${Math.floor(Math.random() * 10 + 85)}% blocked)
+2. **Brute Force** — ${Math.floor(Math.random() * 150 + 100)} attempts (${Math.floor(Math.random() * 5 + 92)}% blocked)
+3. **Malware Delivery** — ${Math.floor(Math.random() * 80 + 40)} attempts
+4. **Web App Exploits** — ${Math.floor(Math.random() * 50 + 20)} attempts
+5. **DNS Tunneling** — ${Math.floor(Math.random() * 30 + 10)} attempts
+
+### Trending:
+- Supply chain attacks **↑ 23%** from last month
+- Credential stuffing **↑ 15%**
+- Zero-day exploits **↓ 8%** (improved patching)
+
+### Top Targeted Services:
+\`RDP (3389)\` • \`SSH (22)\` • \`HTTPS (443)\` • \`SMB (445)\``;
+  }
+
+  if (lower.includes("threat actor") || lower.includes("sector")) {
+    return `## Threat Actors Targeting Our Sector
+
+### Active Groups:
+| Group | Origin | Risk | Recent Activity |
+|-------|--------|------|-----------------|
+| APT29 — Cozy Bear | Russia | 🔴 Critical | SolarWinds-style supply chain |
+| Lazarus Group | DPRK | 🔴 Critical | Cryptocurrency theft campaigns |
+| APT41 — Winnti | China | 🟡 High | Healthcare/tech targeting |
+| FIN7 | Russia | 🟡 High | POS malware evolution |
+
+### Sector Intelligence:
+Our industry vertical has seen a **${Math.floor(Math.random() * 30 + 10)}% increase** in targeted attacks this quarter. Primary motivations: espionage, financial gain, and disruption.
+
+### IOC Summary:
+- **${Math.floor(Math.random() * 500 + 200)}** IP addresses blacklisted
+- **${Math.floor(Math.random() * 100 + 50)}** malicious domains tracked
+- **${Math.floor(Math.random() * 200 + 100)}** file hashes in threat database`;
+  }
+
+  // Default contextual response
+  return `## Threat Analysis Summary
+
+Based on current telemetry data, I've identified **${stats.threatsDetected} anomalous events** in the last 24 hours.
+
+### Key Findings:
+- **${threats.filter((t) => t.severity === "critical").length} Critical** alerts requiring immediate action
+- **${threats.filter((t) => t.status === "active").length} active** threats being tracked
+- System health: CPU ${health.cpu}%, Memory ${health.memory}%, ML accuracy ${health.modelAccuracy}%
+
+### Recommended Actions:
+1. Review critical alerts on the Alerts page
+2. Check Network Topology for compromised nodes
+3. Update detection rules for new IOCs
+4. Schedule model retraining if accuracy drops below 95%
+
+*Confidence: ${(Math.random() * 5 + 93).toFixed(1)}% — Ask me anything specific for deeper analysis.*`;
+}
+
+function generateReport(type: string): string {
+  const stats = generateQuickStats();
+  const threats = generateInitialThreats(5);
+  const health = generateSystemHealth();
+  const date = new Date().toLocaleDateString();
+
+  switch (type) {
+    case "Daily Summary":
+      return `# SENTINEL AI — Daily Security Summary
+**Date:** ${date}
+
+## Overview
+- Events processed: ${stats.totalEvents.toLocaleString()}
+- Threats detected: ${stats.threatsDetected}
+- Threats mitigated: ${stats.threatsMitigated}
+- False positive rate: ${stats.falsePositiveRate}%
+- Avg response time: ${stats.avgResponseTime}s
+
+## Critical Alerts
+${
+  threats
+    .filter((t) => t.severity === "critical")
+    .map((t) => `- **${t.name}** (${t.type}) — ${t.status}`)
+    .join("\n") || "- None"
+}
+
+## System Health
+- CPU: ${health.cpu}% | Memory: ${health.memory}% | Bandwidth: ${health.bandwidth}%
+- ML Model Accuracy: ${health.modelAccuracy}%
+
+## Action Items
+1. Review ${stats.threatsDetected - stats.threatsMitigated} unmitigated threats
+2. Update signatures for latest IOCs
+3. Verify backup integrity
+
+---
+*Auto-generated by SENTINEL AI at ${new Date().toISOString()}*`;
+
+    case "Weekly Analysis":
+      return `# SENTINEL AI — Weekly Analysis Report
+**Period:** ${new Date(Date.now() - 604800000).toLocaleDateString()} — ${date}
+
+## Executive Summary
+This week saw ${stats.totalEvents.toLocaleString()} security events across all monitored segments. ${stats.threatsDetected} threats were identified with a ${stats.falsePositiveRate}% false positive rate.
+
+## Threat Trends
+| Day | Events | Threats | Mitigated |
+|-----|--------|---------|-----------|
+${Array.from({ length: 7 }, (_, i) => {
+  const d = new Date(Date.now() - (6 - i) * 86400000);
+  return `| ${d.toLocaleDateString("en", { weekday: "short" })} | ${Math.floor(Math.random() * 50000 + 20000).toLocaleString()} | ${Math.floor(Math.random() * 10 + 3)} | ${Math.floor(Math.random() * 8 + 2)} |`;
+}).join("\n")}
+
+## Top Threats
+${threats.map((t, i) => `${i + 1}. **${t.name}** — ${t.type} (${t.severity}) — Confidence: ${(t.confidence * 100).toFixed(1)}%`).join("\n")}
+
+## Recommendations
+1. Increase monitoring on identified attack vectors
+2. Schedule threat hunting session for APT indicators
+3. Review and update detection rules
+4. Conduct incident response drill
+
+---
+*Auto-generated by SENTINEL AI*`;
+
+    case "Monthly Report":
+      return `# SENTINEL AI — Monthly Executive Report
+**Month:** ${new Date().toLocaleDateString("en", { month: "long", year: "numeric" })}
+
+## KPIs
+- **MTTD (Mean Time to Detect):** ${stats.avgResponseTime}s
+- **MTTR (Mean Time to Respond):** ${(stats.avgResponseTime * 3).toFixed(1)}s
+- **Detection Rate:** ${(100 - stats.falsePositiveRate).toFixed(1)}%
+- **Uptime:** 99.97%
+
+## Security Posture: ${stats.threatsDetected < 30 ? "🟢 STRONG" : "🟡 MODERATE"}
+
+## Budget Impact
+- Prevented estimated $${Math.floor(Math.random() * 500000 + 100000).toLocaleString()} in potential breach costs
+- ${stats.threatsMitigated} threats auto-mitigated (saving ~${stats.threatsMitigated * 4}h analyst time)
+
+## Strategic Recommendations
+1. Invest in advanced EDR capabilities
+2. Expand threat intelligence feeds
+3. Implement zero-trust network segments
+4. Schedule annual penetration test
+
+---
+*SENTINEL AI — Enterprise Cyber Threat Intelligence*`;
+
+    case "Incident Report": {
+      const threat = threats[0];
+      return `# SENTINEL AI — Incident Report
+**Incident ID:** INC-${Date.now().toString(36).toUpperCase()}
+**Date:** ${date}
+**Severity:** ${threat.severity.toUpperCase()}
+**Status:** ${threat.status}
+
+## Incident Details
+- **Threat:** ${threat.name}
+- **Type:** ${threat.type}
+- **MITRE ATT&CK:** ${threat.mitreAttackTechnique}
+
+## Timeline
+1. **${new Date(Date.now() - 7200000).toLocaleTimeString()}** — Initial detection by ML engine
+2. **${new Date(Date.now() - 6000000).toLocaleTimeString()}** — Alert generated and assigned
+3. **${new Date(Date.now() - 3600000).toLocaleTimeString()}** — Investigation initiated
+4. **${new Date().toLocaleTimeString()}** — Report generated
+
+## Affected Assets
+${threat.targetAssets.map((a) => `- ${a}`).join("\n")}
+
+## Source IPs
+${threat.sourceIPs.map((ip) => `- \`${ip}\``).join("\n")}
+
+## AI Analysis
+${threat.aiAnalysis}
+
+## Containment Actions
+1. Blocked source IPs at perimeter firewall
+2. Isolated affected endpoints
+3. Initiated credential rotation
+4. Deployed updated detection signatures
+
+---
+*Auto-generated incident report — SENTINEL AI*`;
+    }
+
+    default:
+      return `Report type "${type}" not recognized.`;
+  }
+}
 
 const AIAnalysisPage = () => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [generatedReports, setGeneratedReports] = useState<
+    Record<string, string>
+  >({});
+  const [generatingReport, setGeneratingReport] = useState<string | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    if (chatRef.current)
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, []);
 
   useEffect(scrollToBottom, [messages, scrollToBottom]);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim() || isTyping) return;
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim() || isTyping) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text, timestamp: new Date() };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setIsTyping(true);
+      const userMsg: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: text,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      setIsTyping(true);
 
-    const responseKey = Object.keys(AI_RESPONSES).find(k => text.toLowerCase().includes(k)) || 'default';
-    const response = AI_RESPONSES[responseKey];
+      const history = messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+      const aiResponse = await requestAiAnalysis(text, history);
+      const response = aiResponse ?? generateContextAwareResponse(text);
 
-    setTimeout(() => {
-      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', content: response, timestamp: new Date() };
-      setMessages(prev => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 1500);
-  };
+      // Simulate typing with variable delay based on response length
+      const delay = Math.min(800 + response.length * 2, 3000);
+      setTimeout(() => {
+        const aiMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "ai",
+          content: response,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+      }, delay);
+      if (!aiResponse) {
+        toast.info("Backend AI unavailable, using local analysis fallback.");
+      }
+    },
+    [isTyping, messages],
+  );
+
+  const handleGenerateReport = useCallback((reportType: string) => {
+    setGeneratingReport(reportType);
+    toast.loading(`Generating ${reportType}...`);
+
+    setTimeout(
+      () => {
+        const report = generateReport(reportType);
+        setGeneratedReports((prev) => ({ ...prev, [reportType]: report }));
+        setGeneratingReport(null);
+        toast.dismiss();
+        toast.success(`${reportType} generated successfully`);
+      },
+      1500 + Math.random() * 1000,
+    );
+  }, []);
+
+  const handleExportReport = useCallback(
+    (reportType: string) => {
+      const report = generatedReports[reportType];
+      if (!report) return;
+      const blob = new Blob([report], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sentinel-${reportType.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Report exported");
+    },
+    [generatedReports],
+  );
 
   return (
     <div className="p-4 h-[calc(100vh-6rem)] flex gap-3">
@@ -112,19 +447,32 @@ const AIAnalysisPage = () => {
           header={
             <>
               <PulsingDot color="cyan" />
-              <span className="text-[13px] font-mono font-medium text-foreground">SENTINEL AI — THREAT ANALYST</span>
+              <span className="text-[13px] font-mono font-medium text-foreground">
+                SENTINEL AI — THREAT ANALYST
+              </span>
+              <span className="ml-auto text-[10px] font-mono text-muted-foreground">
+                {messages.filter((m) => m.role === "user").length} queries
+              </span>
             </>
           }
         >
-          <div ref={chatRef} className="flex-1 overflow-y-auto cyber-scrollbar p-4 space-y-4">
+          <div
+            ref={chatRef}
+            className="flex-1 overflow-y-auto cyber-scrollbar p-4 space-y-4"
+          >
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center gap-6">
                 <div className="text-center">
-                  <h2 className="text-lg font-mono font-bold text-primary mb-2">SENTINEL AI ANALYST</h2>
-                  <p className="text-[12px] text-muted-foreground font-mono">Ask about threats, anomalies, network security, or generate reports.</p>
+                  <h2 className="text-lg font-mono font-bold text-primary mb-2">
+                    SENTINEL AI ANALYST
+                  </h2>
+                  <p className="text-[12px] text-muted-foreground font-mono">
+                    Ask about threats, anomalies, network security, or generate
+                    reports.
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-                  {SAMPLE_PROMPTS.map(prompt => (
+                  {SAMPLE_PROMPTS.map((prompt) => (
                     <button
                       key={prompt}
                       onClick={() => sendMessage(prompt)}
@@ -136,16 +484,21 @@ const AIAnalysisPage = () => {
                 </div>
               </div>
             )}
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-sm text-[12px] font-mono ${
-                  msg.role === 'user'
-                    ? 'bg-primary/10 text-foreground border border-primary/15'
-                    : 'bg-card border border-border'
-                }`}>
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-sm text-[12px] font-mono ${
+                    msg.role === "user"
+                      ? "bg-primary/10 text-foreground border border-primary/15"
+                      : "bg-card border border-border"
+                  }`}
+                >
                   <div className="whitespace-pre-wrap">{msg.content}</div>
                   <div className="mt-1 text-[9px] text-muted-foreground">
-                    {msg.timestamp.toLocaleTimeString('en', { hour12: false })}
+                    {msg.timestamp.toLocaleTimeString("en", { hour12: false })}
                   </div>
                 </div>
               </div>
@@ -155,8 +508,14 @@ const AIAnalysisPage = () => {
                 <div className="bg-card border border-border p-3 rounded-sm">
                   <div className="flex gap-1">
                     <span className="w-1.5 h-1.5 bg-primary rounded-full animate-threat-pulse" />
-                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-threat-pulse" style={{ animationDelay: '0.2s' }} />
-                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-threat-pulse" style={{ animationDelay: '0.4s' }} />
+                    <span
+                      className="w-1.5 h-1.5 bg-primary rounded-full animate-threat-pulse"
+                      style={{ animationDelay: "0.2s" }}
+                    />
+                    <span
+                      className="w-1.5 h-1.5 bg-primary rounded-full animate-threat-pulse"
+                      style={{ animationDelay: "0.4s" }}
+                    />
                   </div>
                 </div>
               </div>
@@ -168,8 +527,8 @@ const AIAnalysisPage = () => {
               <input
                 type="text"
                 value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMessage(input)}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
                 placeholder="Ask SENTINEL AI..."
                 className="flex-1 px-3 py-2 bg-background border border-border rounded-sm text-[12px] font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 transition-all"
               />
@@ -186,14 +545,54 @@ const AIAnalysisPage = () => {
       </div>
 
       {/* Report Cards */}
-      <div className="w-64 space-y-3 flex-shrink-0">
-        {['Daily Summary', 'Weekly Analysis', 'Monthly Report', 'Incident Report'].map(report => (
+      <div className="w-72 space-y-3 flex-shrink-0">
+        {[
+          "Daily Summary",
+          "Weekly Analysis",
+          "Monthly Report",
+          "Incident Report",
+        ].map((report) => (
           <GlowCard key={report}>
-            <div className="text-[12px] font-mono font-medium text-foreground mb-1">{report}</div>
-            <div className="text-[10px] font-mono text-muted-foreground mb-3">Auto-generated from threat data</div>
-            <button className="w-full px-3 py-1.5 text-[10px] font-mono bg-primary/5 text-primary border border-primary/15 rounded-sm hover:bg-primary/10 transition-all">
-              GENERATE REPORT
-            </button>
+            <div className="text-[12px] font-mono font-medium text-foreground mb-1">
+              {report}
+            </div>
+            <div className="text-[10px] font-mono text-muted-foreground mb-3">
+              {generatedReports[report]
+                ? "Report ready"
+                : "Auto-generated from threat data"}
+            </div>
+            {!generatedReports[report] ? (
+              <button
+                onClick={() => handleGenerateReport(report)}
+                disabled={generatingReport === report}
+                className="w-full px-3 py-1.5 text-[10px] font-mono bg-primary/5 text-primary border border-primary/15 rounded-sm hover:bg-primary/10 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+              >
+                <FileText className="w-3 h-3" />
+                {generatingReport === report
+                  ? "GENERATING..."
+                  : "GENERATE REPORT"}
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="max-h-32 overflow-y-auto cyber-scrollbar text-[9px] font-mono text-muted-foreground bg-background/50 p-2 rounded-sm border border-border/30">
+                  {generatedReports[report].slice(0, 300)}...
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleExportReport(report)}
+                    className="flex-1 px-2 py-1 text-[10px] font-mono bg-success/10 text-success border border-success/15 rounded-sm hover:bg-success/20 transition-all flex items-center justify-center gap-1"
+                  >
+                    <Download className="w-3 h-3" /> EXPORT
+                  </button>
+                  <button
+                    onClick={() => handleGenerateReport(report)}
+                    className="flex-1 px-2 py-1 text-[10px] font-mono bg-primary/5 text-primary border border-primary/15 rounded-sm hover:bg-primary/10 transition-all"
+                  >
+                    REGENERATE
+                  </button>
+                </div>
+              </div>
+            )}
           </GlowCard>
         ))}
       </div>

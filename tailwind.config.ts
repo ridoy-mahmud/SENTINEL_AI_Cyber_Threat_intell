@@ -1,8 +1,14 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
   prefix: "",
   theme: {
     container: {
@@ -14,8 +20,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        mono: ['"JetBrains Mono"', 'monospace'],
-        sans: ['"Inter"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', "monospace"],
+        sans: ['"Inter"', "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -76,10 +82,10 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        'glow-cyan': '0 0 15px hsla(186, 100%, 50%, 0.2)',
-        'glow-red': '0 0 20px hsla(345, 100%, 50%, 0.4)',
-        'glow-green': '0 0 15px hsla(153, 100%, 50%, 0.2)',
-        'glow-amber': '0 0 15px hsla(33, 100%, 50%, 0.2)',
+        "glow-cyan": "0 0 15px hsla(186, 100%, 50%, 0.2)",
+        "glow-red": "0 0 20px hsla(345, 100%, 50%, 0.4)",
+        "glow-green": "0 0 15px hsla(153, 100%, 50%, 0.2)",
+        "glow-amber": "0 0 15px hsla(33, 100%, 50%, 0.2)",
       },
       keyframes: {
         "accordion-down": {
@@ -112,5 +118,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
